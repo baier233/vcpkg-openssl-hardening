@@ -1,0 +1,23 @@
+# User configuration (contains local paths)
+scripts/config.cmd
+
+# Build artifacts
+*.exe
+*.obj
+*.pdb
+*.ilk
+*.lib
+
+# Test output
+test/*.exe
+test/*.obj
+
+# IDE
+.vs/
+.vscode/
+*.suo
+*.user
+*.sln.docstates
+
+# Logs
+*.log

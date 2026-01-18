@@ -1,0 +1,123 @@
+diff --git a/crypto/cversion.c b/crypto/cversion.c
+--- a/crypto/cversion.c
++++ b/crypto/cversion.c
+@@ -16,6 +16,17 @@
+
+ #include "buildinf.h"
+
++/* VCPKG: Security hardening - strip build info from binary */
++#define OSSL_STRIP_BUILD_INFO 1
++
++#if defined(OSSL_STRIP_BUILD_INFO)
++# undef OPENSSLDIR
++# undef ENGINESDIR
++# undef MODULESDIR
++# define OPENSSLDIR ""
++# define ENGINESDIR ""
++# define MODULESDIR ""
++#endif
+ unsigned long OpenSSL_version_num(void)
+ {
+     return OPENSSL_VERSION_NUMBER;
+@@ -78,6 +89,12 @@ int OSSL_PROVIDER_available(OSSL_LIB_CTX
+
+ const char *OpenSSL_version(int t)
+ {
++#if defined(OSSL_STRIP_BUILD_INFO)
++    /* Return empty strings to prevent binary fingerprinting */
++    (void)compiler_flags; /* Suppress unused warning */
++    (void)t;
++    return "";
++#else
+ #if defined(_WIN32) && defined(OSSL_WINCTX)
+     /* Cannot really fail but we would return empty strings anyway */
+     (void)RUN_ONCE(&version_strings_once, version_strings_setup);
+@@ -136,4 +153,5 @@ const char *OpenSSL_version(int t)
+ #endif
+     }
+     return "not available";
++#endif /* OSSL_STRIP_BUILD_INFO */
+ }
+diff --git a/crypto/defaults.c b/crypto/defaults.c
+--- a/crypto/defaults.c
++++ b/crypto/defaults.c
+@@ -144,6 +144,10 @@ DEFINE_RUN_ONCE_STATIC(do_defaults_setup)
+  *
+  * @return A pointer to a string containing the OpenSSL directory path.
+  */
++
++/* VCPKG: Security hardening - strip directory paths from binary */
++#define OSSL_STRIP_PATHS 1
++
+ const char *ossl_get_openssldir(void)
+ {
+ #if defined(_WIN32) && defined (OSSL_WINCTX)
+@@ -151,6 +155,9 @@ const char *ossl_get_openssldir(void)
+         return NULL;
+     return (const char *)openssldirptr;
+ # else
++#if defined(OSSL_STRIP_PATHS)
++    return "";
++#endif
+     return OPENSSLDIR;
+ #endif
+ }
+@@ -168,6 +175,9 @@ const char *ossl_get_enginesdir(void)
+         return NULL;
+     return (const char *)enginesdirptr;
+ #else
++#if defined(OSSL_STRIP_PATHS)
++    return "";
++#endif
+     return ENGINESDIR;
+ #endif
+ }
+@@ -185,6 +195,9 @@ const char *ossl_get_modulesdir(void)
+         return NULL;
+     return (const char *)modulesdirptr;
+ #else
++#if defined(OSSL_STRIP_PATHS)
++    return "";
++#endif
+     return MODULESDIR;
+ #endif
+ }
+diff --git a/Configurations/windows-makefile.tmpl b/Configurations/windows-makefile.tmpl
+--- a/Configurations/windows-makefile.tmpl
++++ b/Configurations/windows-makefile.tmpl
+@@ -343,9 +343,10 @@ LIB_CPPFLAGS={- my $lib_cppflags =
+                           @{$config{lib_cppflags}},
+                           @{$config{shared_cppflag}});
+                 join(' ', $lib_cppflags,
++                          # VCPKG: Security hardening - use empty paths to prevent embedding
+                           (map { '-D'.quotify1($_) }
+-                               "OPENSSLDIR=\"$openssldir\"",
+-                               "ENGINESDIR=\"$enginesdir\"",
+-                               "MODULESDIR=\"$modulesdir\""),
++                               "OPENSSLDIR=\"\"",
++                               "ENGINESDIR=\"\"",
++                               "MODULESDIR=\"\""),
+                           '$(CNF_CPPFLAGS)', '$(CPPFLAGS)') -}
+ LIB_CFLAGS={- join(' ', $target{lib_cflags} || (),
+diff --git a/util/mkbuildinf.pl b/util/mkbuildinf.pl
+--- a/util/mkbuildinf.pl
++++ b/util/mkbuildinf.pl
+@@ -9,14 +9,10 @@
+ use strict;
+ use warnings;
+
+-my $platform = pop @ARGV;
+-my $cflags = join(' ', @ARGV);
+-$cflags =~ s(\\)(\\\\)g;
+-$cflags = "compiler: $cflags";
+-
+-# Use the value of the envvar SOURCE_DATE_EPOCH, even if it's
+-# zero or the empty string.
+-my $date = gmtime($ENV{'SOURCE_DATE_EPOCH'} // time()) . " UTC";
++# VCPKG: Security hardening - strip build info
++my $platform = "";
++my $cflags = "";
++my $date = "";
+
+ print <<"END_OUTPUT";
+ /*
